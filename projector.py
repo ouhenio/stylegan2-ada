@@ -21,17 +21,29 @@ import tqdm
 import dnnlib
 import dnnlib.tflib as tflib
 
+import random
+import string
+
 class Projector:
-    def __init__(self):
-        self.num_steps                  = 1000
+    def __init__(self,
+        num_targets,
+        num_steps                       = 500,
+        initial_learning_rate           = 0.1,
+        initial_noise_factor            = 0.05,
+        verbose                         = True,
+        tiled                           = False
+    ):
+        self.num_steps                  = num_steps
+        self.num_targets                = num_targets
         self.dlatent_avg_samples        = 10000
-        self.initial_learning_rate      = 0.1
-        self.initial_noise_factor       = 0.05
+        self.initial_learning_rate      = initial_learning_rate
+        self.initial_noise_factor       = initial_noise_factor
         self.lr_rampdown_length         = 0.25
         self.lr_rampup_length           = 0.05
         self.noise_ramp_length          = 0.75
         self.regularize_noise_weight    = 1e5
-        self.verbose                    = True
+        self.verbose                    = verbose
+        self.tiled                      = tiled
 
         self._Gs                    = None
         self._minibatch_size        = None
@@ -68,8 +80,10 @@ class Projector:
         # Compute dlatent stats.
         self._info(f'Computing W midpoint and stddev using {self.dlatent_avg_samples} samples...')
         latent_samples = np.random.RandomState(123).randn(self.dlatent_avg_samples, *self._Gs.input_shapes[0][1:])
-        dlatent_samples = self._Gs.components.mapping.run(latent_samples, None)  # [N, L, C]
-        dlatent_samples = dlatent_samples[:, :1, :].astype(np.float32)           # [N, 1, C]
+        if self.tiled:
+            dlatent_samples = self._Gs.components.mapping.run(latent_samples, None)[:, :1, :].astype(np.float32)  # [N, 1, C]
+        else:
+            dlatent_samples = self._Gs.components.mapping.run(latent_samples, None).astype(np.float32) # [N, 18, C]
         self._dlatent_avg = np.mean(dlatent_samples, axis=0, keepdims=True)      # [1, 1, C]
         self._dlatent_std = (np.sum((dlatent_samples - self._dlatent_avg) ** 2) / self.dlatent_avg_samples) ** 0.5
         self._info(f'std = {self._dlatent_std:g}')
@@ -98,7 +112,10 @@ class Projector:
         self._dlatents_var = tf.Variable(tf.zeros([self._minibatch_size] + list(self._dlatent_avg.shape[1:])), name='dlatents_var')
         self._dlatent_noise_in = tf.placeholder(tf.float32, [], name='noise_in')
         dlatents_noise = tf.random.normal(shape=self._dlatents_var.shape) * self._dlatent_noise_in
-        self._dlatents_expr = tf.tile(self._dlatents_var + dlatents_noise, [1, self._Gs.components.synthesis.input_shape[1], 1])
+        if self.tiled:
+            self._dlatents_expr = tf.tile(self._dlatents_var + dlatents_noise, [1, self._Gs.components.synthesis.input_shape[1], 1])
+        else:
+            self._dlatents_expr = self._dlatents_var + dlatents_noise
         self._images_float_expr = tf.cast(self._Gs.components.synthesis.get_output_for(self._dlatents_expr), tf.float32)
         self._images_uint8_expr = tflib.convert_images_to_uint8(self._images_float_expr, nchw_to_nhwc=True)
 
@@ -111,11 +128,19 @@ class Projector:
 
         # Build loss graph.
         self._info('Building loss graph...')
-        self._target_images_var = tf.Variable(tf.zeros(proc_images_expr.shape), name='target_images_var')
+        # 3 _target_images_var como argumentos mandados desde start
+        # self._target_images_var = tf.Variable(tf.zeros(proc_images_expr.shape), name='target_images_var')
+        all_letters = string.ascii_lowercase
+        self.target_images_keys = [''.join(random.choice(all_letters) for j in range(10)) for i in range(self.num_targets)]
+        for _target_image_key in self.target_images_keys:
+            setattr(self, _target_image_key, tf.Variable(tf.zeros(proc_images_expr.shape), name=_target_image_key))
         if self._lpips is None:
             with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
                 self._lpips = pickle.load(f)
-        self._dist = self._lpips.get_output_for(proc_images_expr, self._target_images_var)
+        
+        self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
+        # for target_image in all_target_images:
+        #   self._dist = self._lpips.get_output_for(target_image, self._target_images_var)
         self._loss = tf.reduce_sum(self._dist)
 
         # Build noise regularization graph.
@@ -144,18 +169,24 @@ class Projector:
 
         # Prepare target images.
         self._info('Preparing target images...')
-        target_images = np.asarray(target_images, dtype='float32')
-        target_images = (target_images + 1) * (255 / 2)
-        sh = target_images.shape
-        assert sh[0] == self._minibatch_size
-        if sh[2] > self._target_images_var.shape[2]:
-            factor = sh[2] // self._target_images_var.shape[2]
-            target_images = np.reshape(target_images, [-1, sh[1], sh[2] // factor, factor, sh[3] // factor, factor]).mean((3, 5))
+        processed_target_images = []
+        for _target_image in target_images:
+            target_image = np.asarray(_target_image, dtype='float32')
+            target_image = (target_image + 1) * (255 / 2)
+            sh = target_image.shape
+            assert sh[0] == self._minibatch_size
+            if sh[2] > getattr(self, self.target_images_keys[0]).shape[2]:
+                factor = sh[2] // getattr(self, self.target_images_keys[0]).shape[2]
+                target_image = np.reshape(target_image, [-1, sh[1], sh[2] // factor, factor, sh[3] // factor, factor]).mean((3, 5))
+            processed_target_images.append(target_image)
 
         # Initialize optimization state.
         self._info('Initializing optimization state...')
         dlatents = np.tile(self._dlatent_avg, [self._minibatch_size, 1, 1])
-        tflib.set_vars({self._target_images_var: target_images, self._dlatents_var: dlatents})
+        basic_keys = {self._dlatents_var: dlatents}
+        dinamic_keys = {getattr(self, _target_image_key): target_image for (_target_image_key, target_image) in zip(self.target_images_keys, processed_target_images)}
+        tflib.set_vars({**basic_keys, **dinamic_keys})
+        # for (_target_image_key, target_image) in zip(self.target_images_keys, target_images)
         tflib.run(self._noise_init_op)
         self._opt.reset_optimizer_state()
         self._cur_step = 0
@@ -202,7 +233,9 @@ class Projector:
 
 #----------------------------------------------------------------------------
 
-def project(network_pkl: str, target_fname: str, outdir: str, save_video: bool, seed: int):
+def project(network_pkl: str, target_folder: str, outdir: str, save_video: bool, seed: int, steps: int, tiled: bool):
+    target_fnames = os.listdir(target_folder)
+    num_targets = len(target_fnames)
     # Load networks.
     tflib.init_tf({'rnd.np_random_seed': seed})
     print('Loading networks from "%s"...' % network_pkl)
@@ -210,19 +243,24 @@ def project(network_pkl: str, target_fname: str, outdir: str, save_video: bool, 
         _G, _D, Gs = pickle.load(fp)
 
     # Load target image.
-    target_pil = PIL.Image.open(target_fname)
-    w, h = target_pil.size
-    s = min(w, h)
-    target_pil = target_pil.crop(((w - s) // 2, (h - s) // 2, (w + s) // 2, (h + s) // 2))
-    target_pil= target_pil.convert('RGB')
-    target_pil = target_pil.resize((Gs.output_shape[3], Gs.output_shape[2]), PIL.Image.ANTIALIAS)
-    target_uint8 = np.array(target_pil, dtype=np.uint8)
-    target_float = target_uint8.astype(np.float32).transpose([2, 0, 1]) * (2 / 255) - 1
+    # I have to run this operation at every image
+    targets = []
+    for target_fname in target_fnames:
+        target_pil = PIL.Image.open(target_folder + target_fname)
+        w, h = target_pil.size
+        s = min(w, h)
+        target_pil = target_pil.crop(((w - s) // 2, (h - s) // 2, (w + s) // 2, (h + s) // 2))
+        target_pil= target_pil.convert('RGB')
+        target_pil = target_pil.resize((Gs.output_shape[3], Gs.output_shape[2]), PIL.Image.ANTIALIAS)
+        target_uint8 = np.array(target_pil, dtype=np.uint8)
+        target_float = target_uint8.astype(np.float32).transpose([2, 0, 1]) * (2 / 255) - 1
+        targets.append([target_float])
 
     # Initialize projector.
-    proj = Projector()
+    proj = Projector(num_steps=steps, num_targets=num_targets, tiled=tiled)
     proj.set_network(Gs)
-    proj.start([target_float])
+    # Add every processed image as an argument
+    proj.start(targets)
 
     # Setup output directory.
     os.makedirs(outdir, exist_ok=True)
@@ -275,10 +313,14 @@ def main():
     )
 
     parser.add_argument('--network',     help='Network pickle filename', dest='network_pkl', required=True)
-    parser.add_argument('--target',      help='Target image file to project to', dest='target_fname', required=True)
+    # parser.add_argument('--target',      help='Target image file to project to', dest='target_fname', required=True)
+    # 
+    parser.add_argument('--target-folder',      help='Target the folder containing the images to project from', dest='target_folder', required=True)
     parser.add_argument('--save-video',  help='Save an mp4 video of optimization progress (default: true)', type=_str_to_bool, default=True)
     parser.add_argument('--seed',        help='Random seed', type=int, default=303)
     parser.add_argument('--outdir',      help='Where to save the output images', required=True, metavar='DIR')
+    parser.add_argument('--steps',       help='Number of optimization steps', type=int, default=500)
+    parser.add_argument('--tiled',       help='Tiled?', type=bool, default=True)
     project(**vars(parser.parse_args()))
 
 #----------------------------------------------------------------------------
