@@ -31,11 +31,12 @@ class Projector:
         initial_learning_rate           = 0.1,
         initial_noise_factor            = 0.05,
         verbose                         = True,
-        tiled                           = False
+        tiled                           = False,
+        latent_seed                     = 123
     ):
         self.num_steps                  = num_steps
         self.num_targets                = num_targets
-        self.dlatent_avg_samples        = 10000
+        self.dlatent_avg_samples        = 1
         self.initial_learning_rate      = initial_learning_rate
         self.initial_noise_factor       = initial_noise_factor
         self.lr_rampdown_length         = 0.25
@@ -44,6 +45,7 @@ class Projector:
         self.regularize_noise_weight    = 1e5
         self.verbose                    = verbose
         self.tiled                      = tiled
+        self.latent_seed                = latent_seed
 
         self._Gs                    = None
         self._minibatch_size        = None
@@ -79,7 +81,7 @@ class Projector:
 
         # Compute dlatent stats.
         self._info(f'Computing W midpoint and stddev using {self.dlatent_avg_samples} samples...')
-        latent_samples = np.random.RandomState(123).randn(self.dlatent_avg_samples, *self._Gs.input_shapes[0][1:])
+        latent_samples = np.random.RandomState(self.latent_seed).randn(self.dlatent_avg_samples, *self._Gs.input_shapes[0][1:])
         if self.tiled:
             dlatent_samples = self._Gs.components.mapping.run(latent_samples, None)[:, :1, :].astype(np.float32)  # [N, 1, C]
         else:
@@ -139,6 +141,7 @@ class Projector:
                 self._lpips = pickle.load(f)
         
         self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
+        # self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
         # for target_image in all_target_images:
         #   self._dist = self._lpips.get_output_for(target_image, self._target_images_var)
         self._loss = tf.reduce_sum(self._dist)
@@ -233,11 +236,19 @@ class Projector:
 
 #----------------------------------------------------------------------------
 
-def project(network_pkl: str, target_folder: str, outdir: str, save_video: bool, seed: int, steps: int, tiled: bool):
+def project(
+        network_pkl: str,
+        target_folder: str,
+        outdir: str,
+        save_video: bool,
+        seed: int,
+        steps: int,
+        tiled: bool,
+        latent_seed: int):
     target_fnames = os.listdir(target_folder)
     num_targets = len(target_fnames)
     # Load networks.
-    tflib.init_tf({'rnd.np_random_seed': seed})
+    tflib.init_tf({'rnd.np_latent_seed': seed})
     print('Loading networks from "%s"...' % network_pkl)
     with dnnlib.util.open_url(network_pkl) as fp:
         _G, _D, Gs = pickle.load(fp)
@@ -257,7 +268,7 @@ def project(network_pkl: str, target_folder: str, outdir: str, save_video: bool,
         targets.append([target_float])
 
     # Initialize projector.
-    proj = Projector(num_steps=steps, num_targets=num_targets, tiled=tiled)
+    proj = Projector(num_steps=steps, num_targets=num_targets, tiled=tiled, latent_seed=latent_seed)
     proj.set_network(Gs)
     # Add every processed image as an argument
     proj.start(targets)
@@ -274,7 +285,7 @@ def project(network_pkl: str, target_folder: str, outdir: str, save_video: bool,
         for step in t:
             assert step == proj.cur_step
             if writer is not None:
-                writer.append_data(np.concatenate([target_uint8, proj.images_uint8[0]], axis=1))
+                writer.append_data(proj.images_uint8[0])
             dist, loss = proj.step()
             t.set_postfix(dist=f'{dist[0]:.4f}', loss=f'{loss:.2f}')
 
@@ -321,6 +332,7 @@ def main():
     parser.add_argument('--outdir',      help='Where to save the output images', required=True, metavar='DIR')
     parser.add_argument('--steps',       help='Number of optimization steps', type=int, default=500)
     parser.add_argument('--tiled',       help='Tiled?', type=bool, default=True)
+    parser.add_argument('--latent_seed',        help='Latent seed', type=int, default=123)
     project(**vars(parser.parse_args()))
 
 #----------------------------------------------------------------------------
