@@ -23,7 +23,7 @@ class PerceptualModel:
         self.perceptual_model = tf.keras.models.Model(vgg16.input, vgg16.layers[self.layer].output)
         # generated_image = preprocess_input(tf.image.resize_images(generated_image_tensor,
         #                                                           (self.img_size, self.img_size), method=1))
-        generated_image_features = self.perceptual_model(generated_image)
+        generated_image_features = self.perceptual_model(generated_image[0])
         original_image_features = self.perceptual_model(original_image)
 
         cosine_loss = tf.keras.losses.CosineSimilarity()
