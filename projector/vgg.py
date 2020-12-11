@@ -3,7 +3,6 @@ import tensorflow as tf
 from keras.models import Model
 from keras.applications.vgg16 import VGG16, preprocess_input
 from keras.preprocessing import image
-from tf.keras.losses import CosineSimilarity
 import keras.backend as K
 
 class PerceptualModel:
@@ -27,5 +26,5 @@ class PerceptualModel:
         generated_image_features = self.perceptual_model(generated_image)
         original_image_features = self.perceptual_model(original_image)
 
-        cosine_loss = CosineSimilarity()
+        cosine_loss = tf.keras.losses.CosineSimilarity()
         return -cosine_loss(original_image_features, generated_image_features)
