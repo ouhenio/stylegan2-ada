@@ -21,6 +21,8 @@ import tqdm
 import dnnlib
 import dnnlib.tflib as tflib
 
+from projector.vgg import PerceptualModel 
+
 import random
 import string
 
@@ -137,8 +139,9 @@ class Projector:
         for _target_image_key in self.target_images_keys:
             setattr(self, _target_image_key, tf.Variable(tf.zeros(proc_images_expr.shape), name=_target_image_key))
         if self._lpips is None:
-            with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
-                self._lpips = pickle.load(f)
+            # with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
+            #     self._lpips = pickle.load(f)
+            self._lpips = PerceptualModel(256)
         
         self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
         # self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
