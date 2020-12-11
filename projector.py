@@ -290,7 +290,8 @@ def project(
             if writer is not None:
                 writer.append_data(proj.images_uint8[0])
             dist, loss = proj.step()
-            t.set_postfix(dist=f'{dist[0]:.4f}', loss=f'{loss:.2f}')
+            # t.set_postfix(dist=f'{dist[0]:.4f}', loss=f'{loss:.2f}')
+            t.set_postfix(dist=f'{dist}', loss=f'{loss}')
 
     # Save results.
     PIL.Image.fromarray(proj.images_uint8[0], 'RGB').save(f'{outdir}/proj.png')
