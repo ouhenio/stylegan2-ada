@@ -28,5 +28,6 @@ class PerceptualModel:
         generated_image_features = self.perceptual_model(generated_image)
         original_image_features = self.perceptual_model(original_image)
 
-        cosine_loss = tf.keras.losses.CosineSimilarity()
-        return -cosine_loss(original_image_features, generated_image_features)
+        # cosine_loss = tf.keras.losses.CosineSimilarity()
+        # return -cosine_loss(original_image_features, generated_image_features)
+        return tf.losses.mean_squared_error(original_image_features, generated_image_features)
