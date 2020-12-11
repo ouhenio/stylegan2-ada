@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from keras.models import Model
-from keras.applications.vgg16 import VGG16, preprocess_input
+from keras.applications.vgg16 import VGG16
 from keras.preprocessing import image
 import keras.backend as K
 
@@ -19,8 +19,8 @@ class PerceptualModel:
         self.loss = None
 
     def get_output_for(self, original_image, generated_image):
-        vgg16 = VGG16(include_top=False, input_shape=(self.img_size, self.img_size, 3))
-        self.perceptual_model = Model(vgg16.input, vgg16.layers[self.layer].output)
+        vgg16 = tf.keras.applications.vgg16.VGG16(include_top=False, input_shape=(self.img_size, self.img_size, 3))
+        self.perceptual_model = tf.keras.models.Model(vgg16.input, vgg16.layers[self.layer].output)
         # generated_image = preprocess_input(tf.image.resize_images(generated_image_tensor,
         #                                                           (self.img_size, self.img_size), method=1))
         generated_image_features = self.perceptual_model(generated_image)
