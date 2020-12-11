@@ -19,7 +19,7 @@ class PerceptualModel:
         self.loss = None
 
     def get_output_for(self, original_image, generated_image):
-        vgg16 = tf.keras.applications.vgg16.VGG16(include_top=False, input_shape=(1, self.img_size, self.img_size, 3))
+        vgg16 = tf.keras.applications.vgg16.VGG16(include_top=False, input_shape=(self.img_size, self.img_size, 3))
         self.perceptual_model = tf.keras.models.Model(vgg16.input, vgg16.layers[self.layer].output)
         # generated_image = preprocess_input(tf.image.resize_images(generated_image_tensor,
         #                                                           (self.img_size, self.img_size), method=1))
