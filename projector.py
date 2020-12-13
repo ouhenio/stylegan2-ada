@@ -341,7 +341,7 @@ def main():
     parser.add_argument('--steps',              help='Number of optimization steps', type=int, default=500)
     parser.add_argument('--tiled',              help='Tiled?', type=bool, default=True)
     parser.add_argument('--latent_seed',        help='Latent seed', type=int, default=123)
-    parser.add_argument('--mode',               help='Loss mode', type=str, defalut='cosine')
+    parser.add_argument('--mode',               help='Loss mode', type=str, default='cosine')
     project(**vars(parser.parse_args()))
 
 #----------------------------------------------------------------------------
