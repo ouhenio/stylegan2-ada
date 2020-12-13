@@ -52,8 +52,6 @@ class Projector:
         self.mode                       = mode
 
         self._Gs                    = None
-        self._minibatch_size        = None
-        self._dlatent_avg           = None
         self._dlatent_std           = None
         self._noise_vars            = None
         self._noise_init_op         = None
