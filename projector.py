@@ -124,7 +124,7 @@ class Projector:
         self._images_uint8_expr = tflib.convert_images_to_uint8(self._images_float_expr, nchw_to_nhwc=True)
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
-        proc_images_expr = (self._images_uint8_expr + 1) * (255 / 2)
+        proc_images_expr = (self._images_float_expr + 1) * (255 / 2)
         sh = proc_images_expr.shape.as_list()
         if sh[2] > 256:
             factor = sh[2] // 256
@@ -139,9 +139,9 @@ class Projector:
         for _target_image_key in self.target_images_keys:
             setattr(self, _target_image_key, tf.Variable(tf.zeros(proc_images_expr.shape), name=_target_image_key))
         if self._lpips is None:
-            # with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
-            #     self._lpips = pickle.load(f)
-            self._lpips = PerceptualModel(256)
+            with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
+                self._lpips = pickle.load(f)
+            # self._lpips = PerceptualModel(256)
         
         self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
         # self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
