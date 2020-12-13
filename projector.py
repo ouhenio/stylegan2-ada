@@ -269,11 +269,6 @@ def project(
         target_uint8 = np.array(target_pil, dtype=np.uint8)
         target_float = target_uint8.astype(np.float32).transpose([2, 0, 1]) * (2 / 255) - 1
         # a) (0, 1, 2) -> (2, 0, 1) -> (1, 2, 0)
-        # b) (0, 1(2), 2(0), 3(1)) -> (0, 2, 3, 1)
-        print("before")
-        print(target_uint8.shape)
-        print("after")
-        print(target_float.shape)
         targets.append([target_float])
 
     # Initialize projector.
