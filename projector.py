@@ -124,7 +124,7 @@ class Projector:
         self._images_uint8_expr = tflib.convert_images_to_uint8(self._images_float_expr, nchw_to_nhwc=True)
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
-        proc_images_expr = (self._images_float_expr + 1) * (255 / 2)
+        proc_images_expr = (self._images_uint8_expr + 1) * (255 / 2)
         sh = proc_images_expr.shape.as_list()
         if sh[2] > 256:
             factor = sh[2] // 256
