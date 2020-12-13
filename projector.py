@@ -21,6 +21,8 @@ import tqdm
 import dnnlib
 import dnnlib.tflib as tflib
 
+from projector.vgg import PerceptualModel 
+
 import random
 import string
 
@@ -32,7 +34,8 @@ class Projector:
         initial_noise_factor            = 0.05,
         verbose                         = True,
         tiled                           = False,
-        latent_seed                     = 123
+        latent_seed                     = 123,
+        mode                            = 'cosine'
     ):
         self.num_steps                  = num_steps
         self.num_targets                = num_targets
@@ -46,10 +49,9 @@ class Projector:
         self.verbose                    = verbose
         self.tiled                      = tiled
         self.latent_seed                = latent_seed
+        self.mode                       = mode
 
         self._Gs                    = None
-        self._minibatch_size        = None
-        self._dlatent_avg           = None
         self._dlatent_std           = None
         self._noise_vars            = None
         self._noise_init_op         = None
@@ -137,8 +139,11 @@ class Projector:
         for _target_image_key in self.target_images_keys:
             setattr(self, _target_image_key, tf.Variable(tf.zeros(proc_images_expr.shape), name=_target_image_key))
         if self._lpips is None:
-            with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
-                self._lpips = pickle.load(f)
+            if self.mode == 'cosine':
+                self._lpips = PerceptualModel(256)
+            elif self.mode == 'perceptual':
+                with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
+                    self._lpips = pickle.load(f)
         
         self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
         # self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
@@ -244,7 +249,8 @@ def project(
         seed: int,
         steps: int,
         tiled: bool,
-        latent_seed: int):
+        latent_seed: int,
+        mode: str):
     target_fnames = os.listdir(target_folder)
     num_targets = len(target_fnames)
     # Load networks.
@@ -265,10 +271,11 @@ def project(
         target_pil = target_pil.resize((Gs.output_shape[3], Gs.output_shape[2]), PIL.Image.ANTIALIAS)
         target_uint8 = np.array(target_pil, dtype=np.uint8)
         target_float = target_uint8.astype(np.float32).transpose([2, 0, 1]) * (2 / 255) - 1
+        # a) (0, 1, 2) -> (2, 0, 1) -> (1, 2, 0)
         targets.append([target_float])
 
     # Initialize projector.
-    proj = Projector(num_steps=steps, num_targets=num_targets, tiled=tiled, latent_seed=latent_seed)
+    proj = Projector(num_steps=steps, num_targets=num_targets, tiled=tiled, latent_seed=latent_seed, mode=mode)
     proj.set_network(Gs)
     # Add every processed image as an argument
     proj.start(targets)
@@ -287,7 +294,8 @@ def project(
             if writer is not None:
                 writer.append_data(proj.images_uint8[0])
             dist, loss = proj.step()
-            t.set_postfix(dist=f'{dist[0]:.4f}', loss=f'{loss:.2f}')
+            # t.set_postfix(dist=f'{dist[0]:.4f}', loss=f'{loss:.2f}')
+            t.set_postfix(dist=f'{dist}', loss=f'{loss}')
 
     # Save results.
     PIL.Image.fromarray(proj.images_uint8[0], 'RGB').save(f'{outdir}/proj.png')
@@ -323,16 +331,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
-    parser.add_argument('--network',     help='Network pickle filename', dest='network_pkl', required=True)
-    # parser.add_argument('--target',      help='Target image file to project to', dest='target_fname', required=True)
-    # 
+    parser.add_argument('--network',            help='Network pickle filename', dest='network_pkl', required=True)
     parser.add_argument('--target-folder',      help='Target the folder containing the images to project from', dest='target_folder', required=True)
-    parser.add_argument('--save-video',  help='Save an mp4 video of optimization progress (default: true)', type=_str_to_bool, default=True)
-    parser.add_argument('--seed',        help='Random seed', type=int, default=303)
-    parser.add_argument('--outdir',      help='Where to save the output images', required=True, metavar='DIR')
-    parser.add_argument('--steps',       help='Number of optimization steps', type=int, default=500)
-    parser.add_argument('--tiled',       help='Tiled?', type=bool, default=True)
+    parser.add_argument('--save-video',         help='Save an mp4 video of optimization progress (default: true)', type=_str_to_bool, default=True)
+    parser.add_argument('--seed',               help='Random seed', type=int, default=303)
+    parser.add_argument('--outdir',             help='Where to save the output images', required=True, metavar='DIR')
+    parser.add_argument('--steps',              help='Number of optimization steps', type=int, default=500)
+    parser.add_argument('--tiled',              help='Tiled?', type=bool, default=True)
     parser.add_argument('--latent_seed',        help='Latent seed', type=int, default=123)
+    parser.add_argument('--mode',               help='Loss mode', type=str, default='cosine')
     project(**vars(parser.parse_args()))
 
 #----------------------------------------------------------------------------
