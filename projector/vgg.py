@@ -6,7 +6,7 @@ from keras.preprocessing import image
 import keras.backend as K
 
 class PerceptualModel:
-    def __init__(self, img_size, layer=-3, batch_size=1, sess=None):
+    def __init__(self, img_size, layer=-2, batch_size=1, sess=None):
         self.sess = tf.get_default_session() if sess is None else sess
         K.set_session(self.sess)
         self.img_size = img_size
