@@ -268,6 +268,8 @@ def project(
         target_pil = target_pil.resize((Gs.output_shape[3], Gs.output_shape[2]), PIL.Image.ANTIALIAS)
         target_uint8 = np.array(target_pil, dtype=np.uint8)
         target_float = target_uint8.astype(np.float32).transpose([2, 0, 1]) * (2 / 255) - 1
+        # a) (0, 1, 2) -> (2, 0, 1)
+        # b) (0, 1(2), 2(0), 3(1)) -> (0, 3, 1, 2)
         print("before")
         print(target_uint8.shape)
         print("after")
