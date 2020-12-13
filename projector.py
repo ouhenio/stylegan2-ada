@@ -34,7 +34,8 @@ class Projector:
         initial_noise_factor            = 0.05,
         verbose                         = True,
         tiled                           = False,
-        latent_seed                     = 123
+        latent_seed                     = 123,
+        mode                            = 'cosine'
     ):
         self.num_steps                  = num_steps
         self.num_targets                = num_targets
@@ -48,6 +49,7 @@ class Projector:
         self.verbose                    = verbose
         self.tiled                      = tiled
         self.latent_seed                = latent_seed
+        self.mode                       = mode
 
         self._Gs                    = None
         self._minibatch_size        = None
@@ -139,9 +141,11 @@ class Projector:
         for _target_image_key in self.target_images_keys:
             setattr(self, _target_image_key, tf.Variable(tf.zeros(proc_images_expr.shape), name=_target_image_key))
         if self._lpips is None:
-            # with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
-            #     self._lpips = pickle.load(f)
-            self._lpips = PerceptualModel(256)
+            if self.mode == 'cosine':
+                self._lpips = PerceptualModel(256)
+            elif self.mode == 'perceptual':
+                with dnnlib.util.open_url('https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada/pretrained/metrics/vgg16_zhang_perceptual.pkl') as f:
+                    self._lpips = pickle.load(f)
         
         self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
         # self._dist = sum([self._lpips.get_output_for(proc_images_expr, getattr(self, _target_image_key)) for _target_image_key in self.target_images_keys])
@@ -247,7 +251,8 @@ def project(
         seed: int,
         steps: int,
         tiled: bool,
-        latent_seed: int):
+        latent_seed: int,
+        mode: str):
     target_fnames = os.listdir(target_folder)
     num_targets = len(target_fnames)
     # Load networks.
@@ -272,7 +277,7 @@ def project(
         targets.append([target_float])
 
     # Initialize projector.
-    proj = Projector(num_steps=steps, num_targets=num_targets, tiled=tiled, latent_seed=latent_seed)
+    proj = Projector(num_steps=steps, num_targets=num_targets, tiled=tiled, latent_seed=latent_seed, mode=mode)
     proj.set_network(Gs)
     # Add every processed image as an argument
     proj.start(targets)
@@ -328,16 +333,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
-    parser.add_argument('--network',     help='Network pickle filename', dest='network_pkl', required=True)
-    # parser.add_argument('--target',      help='Target image file to project to', dest='target_fname', required=True)
-    # 
+    parser.add_argument('--network',            help='Network pickle filename', dest='network_pkl', required=True)
     parser.add_argument('--target-folder',      help='Target the folder containing the images to project from', dest='target_folder', required=True)
-    parser.add_argument('--save-video',  help='Save an mp4 video of optimization progress (default: true)', type=_str_to_bool, default=True)
-    parser.add_argument('--seed',        help='Random seed', type=int, default=303)
-    parser.add_argument('--outdir',      help='Where to save the output images', required=True, metavar='DIR')
-    parser.add_argument('--steps',       help='Number of optimization steps', type=int, default=500)
-    parser.add_argument('--tiled',       help='Tiled?', type=bool, default=True)
+    parser.add_argument('--save-video',         help='Save an mp4 video of optimization progress (default: true)', type=_str_to_bool, default=True)
+    parser.add_argument('--seed',               help='Random seed', type=int, default=303)
+    parser.add_argument('--outdir',             help='Where to save the output images', required=True, metavar='DIR')
+    parser.add_argument('--steps',              help='Number of optimization steps', type=int, default=500)
+    parser.add_argument('--tiled',              help='Tiled?', type=bool, default=True)
     parser.add_argument('--latent_seed',        help='Latent seed', type=int, default=123)
+    parser.add_argument('--mode',               help='Loss mode', type=str, defalut='cosine')
     project(**vars(parser.parse_args()))
 
 #----------------------------------------------------------------------------
