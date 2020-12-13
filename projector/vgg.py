@@ -6,7 +6,7 @@ from keras.preprocessing import image
 import keras.backend as K
 
 class PerceptualModel:
-    def __init__(self, img_size, layer=-2, batch_size=1, sess=None):
+    def __init__(self, img_size, layer=-3, batch_size=1, sess=None):
         self.sess = tf.get_default_session() if sess is None else sess
         K.set_session(self.sess)
         self.img_size = img_size
@@ -21,7 +21,7 @@ class PerceptualModel:
     def get_output_for(self, original_image, generated_image):
         original_image = tf.transpose(original_image, (0, 2, 3, 1))
         generated_image = tf.transpose(generated_image, (0, 2, 3, 1))
-        vgg16 = tf.keras.applications.vgg16.VGG16(include_top=False, input_shape=(self.img_size, self.img_size, 3))
+        vgg16 = tf.keras.applications.vgg16.VGG16(include_top=False, weights='imagenet', input_shape=(self.img_size, self.img_size, 3))
         self.perceptual_model = tf.keras.models.Model(vgg16.input, vgg16.layers[self.layer].output)
         # generated_image = preprocess_input(tf.image.resize_images(generated_image_tensor,
         #                                                           (self.img_size, self.img_size), method=1))
