@@ -1,3 +1,15 @@
+# Custom Projector for StyleGAN2-ADA
+
+This repo replaces / extends the default projector of NVIDIA's StyleGAN2-ADA, allowing it to receive more than one image as an input, and thus find an "optimal" point in the latent space representing many images.
+
+In practice the generated image collapses quickly; since the optimality is calculated using a sum of the Perceptual Loss between the generated image and each of the original images, the loss ends up rewarding the superposition of Styles in the generated image, thus generating an incomprehensible mix of patterns. 
+
+But in many cases, it's capable of generating a new and novel image similar but different from the ones used as input during the first steps of the optimization.
+
+---
+
+# StyleGAN2-ADA original README
+
 ## StyleGAN2 with adaptive discriminator augmentation (ADA)<br>&mdash; Official TensorFlow implementation
 
 ![Teaser image](./docs/stylegan2-ada-teaser-1024x252.png)
