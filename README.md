@@ -6,6 +6,8 @@ In practice the generated image collapses quickly; since the optimality is calcu
 
 But in many cases, it's capable of generating a new and novel image similar but different from the ones used as input during the first steps of the optimization.
 
+ps: yeah, the code here is shitty 🤷‍♂️
+
 ---
 
 # StyleGAN2-ADA original README
